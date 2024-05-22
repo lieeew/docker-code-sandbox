@@ -75,7 +75,6 @@ public class DockerDemo {
 //        dockerClient.startContainerCmd(containerId).exec();
 
 //        Thread.sleep(5000L);
-
         dockerClient.logContainerCmd("fcfb59ff4138")
                 .withStdErr(true)
                 .withStdOut(true)

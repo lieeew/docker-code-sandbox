@@ -5,18 +5,24 @@ import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.*;
 import com.github.dockerjava.api.model.*;
+import com.yupi.yuojcodesandbox.event.ContainerDeleteEvent;
 import com.yupi.yuojcodesandbox.model.ExecuteMessage;
+import com.yupi.yuojcodesandbox.model.ExitValue;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StopWatch;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
+import javax.swing.event.DocumentEvent;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -25,10 +31,13 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Component
-public class JavaDockerCodeSandboxTwo extends JavaCodeSandboxTemplate {
+public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
     public static final String IMAGE_NAME = "openjdk:8-alpine";
 
     private static final long TIME_OUT = 5000L;
+
+    @Resource
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @Resource
     private DockerClient dockerClient;
@@ -58,6 +67,41 @@ public class JavaDockerCodeSandboxTwo extends JavaCodeSandboxTemplate {
      */
     @Override
     public List<ExecuteMessage> runFile(File userCodeFile, List<String> inputList) {
+        CreateContainerResponse createContainerResponse = createContainerAndGetResponse(userCodeFile);
+        String containerId = createContainerResponse.getId();
+        // 启动容器
+        dockerClient.startContainerCmd(containerId).exec();
+        // 执行命令并获取结果
+        List<ExecuteMessage> executeMessageList = new ArrayList<>();
+        // todo 修改 参考 Solution 文档
+        String inputArgsArray = "\"" + String.join("\" \"", inputList) + "\"";
+//        String[] javacSolution = ArrayUtil.append(new String[]{"javac", "-encoding", "utf-8", "/app/Solution.java"});
+//        String[] javacRunMain = ArrayUtil.append(new String[]{"javac", "-encoding", "utf-8", "/app/MainSolution.java"});
+        // "java", "-Dfile.encoding=UTF-8", "-cp", "/app", "Solution", "twoSum" , "1:[1,2,3,4]" ,"10:3"]
+        // 合并命令为一个单一的命令字符串
+        String combinedCommand = String.join(" && ",
+                "javac -encoding utf-8 /app/Solution.java",
+                "javac -encoding utf-8 /app/MainSolution.java",
+                "java -Dfile.encoding=UTF-8 -cp /app MainSolution " + inputArgsArray
+        );
+        String[] commands = {"sh", "-c", combinedCommand};
+        log.info("commands: {}", String.join(" ", commands));
+        ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
+                .withCmd(commands)
+                .withAttachStderr(true)
+                .withAttachStdin(true)
+                .withAttachStdout(true)
+                .exec();
+        log.info("创建执行命令: {}", execCreateCmdResponse);
+        ExecuteMessage executeResult = getExecuteResult(containerId, execCreateCmdResponse);
+        log.info("执行结果: {}", executeResult);
+        executeMessageList.add(executeResult);
+        applicationEventPublisher.publishEvent(new ContainerDeleteEvent(this, containerId));
+        return executeMessageList;
+    }
+
+    private CreateContainerResponse createContainerAndGetResponse(File userCodeFile) {
+        log.info("userCodeFile = {}", userCodeFile);
         // 创建容器
         CreateContainerCmd containerCmd = dockerClient.createContainerCmd(IMAGE_NAME);
         HostConfig hostConfig = new HostConfig();
@@ -65,9 +109,8 @@ public class JavaDockerCodeSandboxTwo extends JavaCodeSandboxTemplate {
         hostConfig.withMemorySwap(0L);
         hostConfig.withCpuCount(1L);
 //        hostConfig.withSecurityOpts(Arrays.asList("seccomp=leikoooDockerClient"));
-        // todo 修改 Bing 的地址
         hostConfig.setBinds(new Bind(userCodeFile.getPath(), new Volume("/app")));
-        CreateContainerResponse createContainerResponse = containerCmd
+        return containerCmd
                 .withHostConfig(hostConfig)
                 .withNetworkDisabled(true)
                 .withAttachStdin(true)
@@ -75,30 +118,6 @@ public class JavaDockerCodeSandboxTwo extends JavaCodeSandboxTemplate {
                 .withAttachStdout(true)
                 .withTty(true)
                 .exec();
-        String containerId = createContainerResponse.getId();
-        // 启动容器
-        dockerClient.startContainerCmd(containerId).exec();
-        // docker exec keen_blackwell java -cp /app Main 1 3
-        // 执行命令并获取结果
-        List<ExecuteMessage> executeMessageList = new ArrayList<>();
-        for (String inputArgs : inputList) {
-            String[] inputArgsArray = inputArgs.split(" ");
-            // todo 修改 参考 Solution 文档
-            String[] javacArray = ArrayUtil.append(new String[] {"javac", "-encoding", "utf-8", "/app/Solution.java"});
-            String[] cmdArray = ArrayUtil.append(new String[]{"java", "-Dfile.encoding=UTF-8", "-cp", "/app", "Solution"}, inputArgsArray);
-            ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
-                    .withCmd(javacArray)
-                    .withCmd(cmdArray)
-                    .withAttachStderr(true)
-                    .withAttachStdin(true)
-                    .withAttachStdout(true)
-                    .exec();
-            log.info("创建执行命令: {}", execCreateCmdResponse);
-
-            ExecuteMessage executeResult = getExecuteResult(containerId, execCreateCmdResponse);
-            executeMessageList.add(executeResult);
-        }
-        return executeMessageList;
     }
 
     @Override
@@ -164,7 +183,7 @@ public class JavaDockerCodeSandboxTwo extends JavaCodeSandboxTemplate {
 
             @Override
             public void onNext(Statistics statistics) {
-                log.info("内存占用 {}", statistics.getMemoryStats().getUsage());
+//                log.info("内存占用 {}", statistics.getMemoryStats().getUsage());
                 maxMemory[0] = Math.max(statistics.getMemoryStats().getUsage(), maxMemory[0]);
             }
 

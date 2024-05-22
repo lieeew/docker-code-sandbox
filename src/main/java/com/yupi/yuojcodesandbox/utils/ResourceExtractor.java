@@ -13,7 +13,23 @@ import java.nio.file.Files;
  * @author <a href="https://www.github.com/lieeew">leikooo</a>
  */
 public class ResourceExtractor {
+    private static File tempDir = null;
 
+    static {
+        try {
+            tempDir = Files.createTempDirectory("ca").toFile();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * todo 后期优化
+     *
+     * @param resourcePath
+     * @return
+     * @throws IOException
+     */
     public static File extractResource(String resourcePath) throws IOException {
         ClassPathResource resource = new ClassPathResource(resourcePath);
         File tempFile = Files.createTempFile("temp", resource.getFilename()).toFile();
@@ -25,19 +41,14 @@ public class ResourceExtractor {
         return tempFile;
     }
 
-    public static File extractResourceDirectory(String resourceDirectory) throws IOException {
-        File tempDir = Files.createTempDirectory("tempDir").toFile();
+    public static File extractResourceDirectory(String resourceDirectory) {
         tempDir.deleteOnExit();
-
         // 获取资源目录下的文件列表
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        String[] resourceFiles = { "ca.pem", "cert.pem", "key.pem" }; // 手动列出文件
-
+        String[] resourceFiles = {"ca.pem", "cert.pem", "key.pem"}; // 手动列出文件
         for (String resourceFile : resourceFiles) {
             File targetFile = new File(tempDir, resourceFile);
             FileCopyUtil.copyFromResourcePathToFile(resourceDirectory + "/" + resourceFile, targetFile);
         }
-
         return tempDir;
     }
 }

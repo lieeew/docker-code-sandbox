@@ -1,6 +1,6 @@
 package com.yupi.yuojcodesandbox.controller;
 
-import com.yupi.yuojcodesandbox.docker.JavaDockerCodeSandboxTwo;
+import com.yupi.yuojcodesandbox.docker.JavaDockerCodeSandbox;
 import com.yupi.yuojcodesandbox.model.ExecuteCodeRequest;
 import com.yupi.yuojcodesandbox.model.ExecuteCodeResponse;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,7 +21,7 @@ public class MainController {
     private static final String AUTH_REQUEST_SECRET = "secretKey";
 
     @Resource
-    private JavaDockerCodeSandboxTwo javaDockerCodeSandboxTwo;
+    private JavaDockerCodeSandbox javaDockerCodeSandboxTwo;
 
     @GetMapping("/health")
     public String healthCheck() {
@@ -36,7 +36,7 @@ public class MainController {
      */
     @PostMapping("/executeCode")
     ExecuteCodeResponse executeCode(@RequestBody ExecuteCodeRequest executeCodeRequest, HttpServletRequest request,
-                                    HttpServletResponse response) {
+                                    HttpServletResponse response) throws InterruptedException {
         // 基本的认证
 //        String authHeader = request.getHeader(AUTH_REQUEST_HEADER);
 //        if (!AUTH_REQUEST_SECRET.equals(authHeader)) {

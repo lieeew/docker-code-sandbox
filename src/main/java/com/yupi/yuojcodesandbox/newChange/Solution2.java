@@ -5,6 +5,9 @@ import lombok.Data;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +21,7 @@ import java.util.regex.Pattern;
  */
 public class Solution2 {
     @Test
-    public void test() {
+    public void test() throws FileNotFoundException {
         String code =
                 "import java.util.HashMap;\n" +
                         "import java.util.Map;\n" +

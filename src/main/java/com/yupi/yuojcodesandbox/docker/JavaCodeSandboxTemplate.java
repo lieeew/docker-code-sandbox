@@ -1,24 +1,25 @@
 package com.yupi.yuojcodesandbox.docker;
 
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.ClassLoaderUtil;
 import cn.hutool.core.util.StrUtil;
 import com.yupi.yuojcodesandbox.model.ExecuteCodeRequest;
 import com.yupi.yuojcodesandbox.model.ExecuteCodeResponse;
 import com.yupi.yuojcodesandbox.model.ExecuteMessage;
 import com.yupi.yuojcodesandbox.model.JudgeInfo;
-import com.yupi.yuojcodesandbox.utils.FileCopyUtil;
 import com.yupi.yuojcodesandbox.utils.ProcessUtils;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.omg.CORBA.CODESET_INCOMPATIBLE;
 
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.*;
 
 /**
  * Java 代码沙箱模板方法的实现
@@ -30,30 +31,33 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
 
     private static final String GLOBAL_JAVA_CLASS_NAME = "Solution.java";
 
+    private static final String RUN_JAVA_CLASS_NAME = "MainSolution.java";
+
     private static final long TIME_OUT = 5000L;
 
     @Override
     public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
         List<String> inputList = executeCodeRequest.getInputList();
         String code = executeCodeRequest.getCode();
+        // todo 添加其他语言支持
         String language = executeCodeRequest.getLanguage();
 
 //        1. 把用户的代码保存为文件
         File userCodeFile = saveCodeToFile(code);
 
 //       2. 编译代码，得到 class 文件
-        ExecuteMessage compileFileExecuteMessage = compileFile(userCodeFile);
+        ExecuteMessage executeMessage = compileFile(userCodeFile);
 
         // 3. 执行代码，得到输出结果
         List<ExecuteMessage> executeMessageList = runFile(userCodeFile, inputList);
-
+        log.info("ExecuteMessage {}", executeMessageList.get(0));
 //        4. 收集整理输出结果
         ExecuteCodeResponse outputResponse = getOutputResponse(executeMessageList);
 
 //        5. 文件清理
-        if (!deleteFile(userCodeFile)) {
-            log.error("deleteFile error, userCodeFilePath = {}", userCodeFile.getAbsolutePath());
-        }
+//        if (!deleteFile(userCodeFile)) {
+//            log.error("deleteFile error, userCodeFilePath = {}", userCodeFile.getAbsolutePath());
+//        }
         return outputResponse;
     }
 
@@ -70,21 +74,25 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
         if (!FileUtil.exist(globalCodePathName)) {
             FileUtil.mkdir(globalCodePathName);
         }
-        // 把用户的代码隔离存放
+        // 保存用户代码
         String userCodeParentPath = globalCodePathName + File.separator + UUID.randomUUID();
-        String userCodePath = userCodeParentPath + File.separator + GLOBAL_JAVA_CLASS_NAME;
-
-        // 添加运行模板
-        code = addRunTemplate(code);
-        return FileUtil.writeString(code, userCodePath, StandardCharsets.UTF_8);
+        // 保存运行模板
+        saveRunTemplateCode(code, userCodeParentPath);
+        saveUserCode(code, userCodeParentPath);
+        return new File(userCodeParentPath);
     }
 
-    private String addRunTemplate(String code) {
+    private void saveUserCode(String code, String userCodeParentPath) {
+        String userCodePath = userCodeParentPath + File.separator + GLOBAL_JAVA_CLASS_NAME;
+        FileUtil.writeString(code, userCodePath, StandardCharsets.UTF_8);
+    }
+
+    private void saveRunTemplateCode(String code, String userCodeParentPath) {
         try {
-            File templateFile = File.createTempFile("template", "template.text");
-            FileCopyUtil.copyFromResourcePathToFile("template/template.text", templateFile);
-            String templateCode = FileUtil.readString(templateFile, StandardCharsets.UTF_8);
-            return String.format(templateCode, getCode(code).getMethod(), code);
+            InputStream inputStream = ClassLoaderUtil.getClassLoader().getResourceAsStream("template" + File.separator + "template.text");
+            String templateCode = IOUtils.toString(new BufferedInputStream(Objects.requireNonNull(inputStream)), StandardCharsets.UTF_8);
+            String userCodePath = userCodeParentPath + File.separator + RUN_JAVA_CLASS_NAME;
+            FileUtil.writeString(templateCode, userCodePath, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -111,8 +119,7 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
      * 3、执行文件，获得执行结果列表
      */
     public List<ExecuteMessage> runFile(File userCodeFile, List<String> inputList) {
-        String userCodeParentPath = userCodeFile.getParentFile().getAbsolutePath();
-
+        String userCodeParentPath = userCodeFile.getAbsolutePath();
         List<ExecuteMessage> executeMessageList = new ArrayList<>();
         for (String inputArgs : inputList) {
 //            String runCmd = String.format("java -Xmx256m -Dfile.encoding=UTF-8 -cp %s Main %s", userCodeParentPath, inputArgs);
@@ -198,30 +205,5 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
         executeCodeResponse.setStatus(2);
         executeCodeResponse.setJudgeInfo(new JudgeInfo());
         return executeCodeResponse;
-    }
-
-    private ExecuteCodeAndImport getCode(String code) {
-        ExecuteCodeAndImport executeCodeAndImport = new ExecuteCodeAndImport();
-        // 匹配 import 语句
-        Pattern importPattern = Pattern.compile("import\\s+(?:static\\s+)?([\\w.]+)(?:\\.\\*)?;");
-        Matcher importMatcher = importPattern.matcher(code);
-        while (importMatcher.find()) {
-            executeCodeAndImport.getImports().add(importMatcher.group(1));
-        }
-        // 匹配 class 对象里面所有的函数
-        importPattern = Pattern.compile("(?s)class\\s+Solution\\s*\\{(.*?)\\}$");
-        importMatcher = importPattern.matcher(code);
-        while (importMatcher.find()) {
-            executeCodeAndImport.setMethod(importMatcher.group(1));
-        }
-        return executeCodeAndImport;
-    }
-
-    @Data
-    static
-    class ExecuteCodeAndImport {
-        private List<String> imports = new ArrayList<>();
-
-        private String method;
     }
 }
