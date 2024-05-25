@@ -1,16 +1,12 @@
 server:
   port: 8080
-#spring:
-#  datasource:
-#    password: 123456
+spring:
+  profiles:
+    active: dev
 docker:
-  host: tcp://123.57.52.207:2376
-  tls_verify: true
-  cert_path: classpath:ca
-  config:
-  api_version:
+  host: ${docker.host}
+  tls_verify: ${docker.tls_verify}
   registry:
-    url: https://index.docker.io/v1/
-    username: leikooo
-    password: Ee719963000
-    email: liangzilixue123456@gmail.com
+    username: ${docker.registry.username}
+    password: ${docker.registry.password}
+    email: ${docker.registry.email}
