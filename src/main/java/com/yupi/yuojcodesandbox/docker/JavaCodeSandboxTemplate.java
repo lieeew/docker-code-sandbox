@@ -46,12 +46,12 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
         File userCodeFile = saveCodeToFile(code);
 
 //       2. 编译代码，得到 class 文件
-        ExecuteMessage executeMessage = compileFile(userCodeFile);
+        compileFile(userCodeFile);
 
         // 3. 执行代码，得到输出结果
         List<ExecuteMessage> executeMessageList = runFile(userCodeFile, inputList);
 
-        //        4. 收集整理输出结果
+        //4. 收集整理输出结果
         ExecuteCodeResponse outputResponse = getOutputResponse(executeMessageList);
 
 //        5. 文件清理
@@ -137,7 +137,6 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
                     }
                 }).start();
                 ExecuteMessage executeMessage = ProcessUtils.runProcessAndGetMessage(runProcess, "运行");
-                System.out.println(executeMessage);
                 executeMessageList.add(executeMessage);
             } catch (Exception e) {
                 throw new RuntimeException("执行错误", e);
@@ -169,15 +168,14 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
             }
         }
         // 正常运行完成
-        if (outputList.size() == executeMessageList.size()) {
-            executeCodeResponse.setStatus(1);
-        }
-        executeCodeResponse.setOutputList(outputList);
+//        if (outputList.size() == executeMessageList.size()) {
+//            executeCodeResponse.setStatus(1);
+//        }
         JudgeInfo judgeInfo = new JudgeInfo();
         judgeInfo.setTime(maxTime);
-        // 要借助第三方库来获取内存占用，非常麻烦，此处不做实现
-//        judgeInfo.setMemory();
+        judgeInfo.setMemory(executeMessageList.get(0).getMemory());
         executeCodeResponse.setJudgeInfo(judgeInfo);
+        executeCodeResponse.setOutputList(outputList);
         return executeCodeResponse;
     }
 

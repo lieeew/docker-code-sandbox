@@ -1,15 +1,13 @@
 package com.yupi.yuojcodesandbox.docker;
 
-import cn.hutool.core.util.ArrayUtil;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.*;
 import com.github.dockerjava.api.model.*;
+import com.github.dockerjava.core.InvocationBuilder;
 import com.yupi.yuojcodesandbox.event.ContainerDeleteEvent;
 import com.yupi.yuojcodesandbox.model.ExecuteMessage;
-import com.yupi.yuojcodesandbox.model.ExitValue;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
@@ -17,7 +15,6 @@ import org.springframework.util.StopWatch;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
-import javax.swing.event.DocumentEvent;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -75,15 +72,15 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
         // 启动容器
         dockerClient.startContainerCmd(containerId).exec();
         // 执行命令并获取结果
+        // docker exec ....
         List<ExecuteMessage> executeMessageList = new ArrayList<>();
-        // todo 修改 参考 Solution 文档
         String inputArgsArray = "'" + String.join("' '", inputList) + "'";
         // 合并命令为一个单一的命令字符串
-        String combinedCommand = String.join(" && ",
-                "cd /app ",
-                "javac -encoding utf-8 /app/Solution.java",
-                "javac -encoding utf-8 /app/MainSolution.java",
-                "java -Dfile.encoding=UTF-8 -cp /app MainSolution " + inputArgsArray
+        String combinedCommand = String.join("&&",
+                " cd /app ",
+                " javac -encoding utf-8 Solution.java ",
+                " javac -encoding utf-8 MainSolution.java ",
+                " java -Dfile.encoding=UTF-8 -cp . MainSolution " + inputArgsArray
         );
         String[] commands = {"sh", "-c", combinedCommand};
         log.info("commands: {}", String.join(" ", commands));
@@ -93,11 +90,9 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
                 .withAttachStdin(true)
                 .withAttachStdout(true)
                 .exec();
-        log.info("创建执行命令: {}", execCreateCmdResponse);
-        ExecuteMessage executeResult = getExecuteResult(containerId, execCreateCmdResponse);
+        ExecuteMessage executeResult = getExecuteResult(execCreateCmdResponse.getId(), containerId);
         log.info("ExecuteMessageResult: {}", executeResult);
         executeMessageList.add(executeResult);
-        applicationEventPublisher.publishEvent(new ContainerDeleteEvent(this, containerId));
         return executeMessageList;
     }
 
@@ -126,27 +121,23 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
         return null;
     }
 
-    private ExecuteMessage getExecuteResult(String containerId, ExecCreateCmdResponse execCreateCmdResponse) {
+    public ExecuteMessage getExecuteResult(String executeId, String containerId) {
+        log.info("getExecuteResult containerId {}", executeId);
         StopWatch stopWatch = new StopWatch();
         final String[] message = new String[30];
         final String[] errorMessage = new String[30];
+        // index 索引
         final int[] messageIndex = {0};
         final int[] errorMessageIndex = {0};
         long time = 0L;
         // 判断是否超时
         final boolean[] isTimeOut = {true};
-        String execId = execCreateCmdResponse.getId();
-
+        // 获取占用的内存
         final long[] maxMemory = {0L};
 
-        // 获取占用的内存
-        try (StatsCmd statsCmd = getRunStatistics(containerId, maxMemory)) {
+        try {
             stopWatch.start();
-            dockerClient.logContainerCmd(execId)
-                    .withStdOut(true)
-                    .withStdErr(true)
-                    .withFollowStream(true)
-                    .withTail(30)
+            dockerClient.execStartCmd(executeId)
                     .exec(new ResultCallback.Adapter<Frame>() {
                         @Override
                         public void onComplete() {
@@ -158,14 +149,16 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
 
                         @Override
                         public void onNext(Frame frame) {
+                            if (messageIndex[0] > 30 || errorMessageIndex[0] > 30) {
+                                // 超过了直接调用 onComplete
+                                super.onComplete();
+                            }
                             log.info("getExecuteResult#onNext be invoke");
                             StreamType streamType = frame.getStreamType();
                             if (StreamType.STDERR.equals(streamType)) {
                                 errorMessage[errorMessageIndex[0]++] = new String(frame.getPayload(), StandardCharsets.UTF_8);
-                                log.error("输出错误结果: {}", errorMessage[0]);
                             } else {
                                 message[messageIndex[0]++] = new String(frame.getPayload(), StandardCharsets.UTF_8);
-                                log.info("输出结果: {}", message[0]);
                             }
                             super.onNext(frame);
                         }
@@ -173,8 +166,12 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
                     .awaitCompletion(TIME_OUT, TimeUnit.SECONDS);
             stopWatch.stop();
             time = stopWatch.getLastTaskTimeMillis();
+            getRunStatistics(containerId, maxMemory);
         } catch (InterruptedException e) {
             log.error("程序执行异常: {}", ExceptionUtils.getStackTrace(e));
+        } finally {
+            // 不管有没有报错一定要删除镜像文件
+            applicationEventPublisher.publishEvent(new ContainerDeleteEvent(this, containerId));
         }
         return ExecuteMessage.builder()
                 .errorMessage(Arrays.stream(errorMessage).filter(Objects::nonNull).collect(Collectors.joining(" ")))
@@ -184,38 +181,18 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
                 .build();
     }
 
-    private StatsCmd getRunStatistics(String containerId, long[] maxMemory) {
-        StatsCmd statsCmd = dockerClient.statsCmd(containerId);
-        ResultCallback<Statistics> statisticsResultCallback = statsCmd.exec(new ResultCallback<Statistics>() {
-
-            @Override
-            public void onNext(Statistics statistics) {
-//                log.info("内存占用 {}", statistics.getMemoryStats().getUsage());
-                maxMemory[0] = Math.max(statistics.getMemoryStats().getUsage(), maxMemory[0]);
-            }
-
-            @Override
-            public void close() throws IOException {
-
-            }
-
-            @Override
-            public void onStart(Closeable closeable) {
-
-            }
-
-            @Override
-            public void onError(Throwable throwable) {
-
-            }
-
-            @Override
-            public void onComplete() {
-
-            }
-        });
-        statsCmd.exec(statisticsResultCallback);
-        return statsCmd;
+    private void getRunStatistics(String containerId, long[] maxMemory) {
+        log.info("start to get container usage {}", containerId);
+        InvocationBuilder.AsyncResultCallback<Statistics> callback = new InvocationBuilder.AsyncResultCallback<>();
+        dockerClient.statsCmd(containerId).exec(callback);
+        Statistics stats;
+        try {
+            stats = callback.awaitResult();
+            maxMemory[0] = stats.getMemoryStats().getUsage() >= maxMemory[0] ? stats.getMemoryStats().getUsage() : maxMemory[0];
+            callback.close();
+        } catch (RuntimeException | IOException e) {
+            log.error("getStatisticsError {}", ExceptionUtils.getStackTrace(e));
+        }
     }
 
 }

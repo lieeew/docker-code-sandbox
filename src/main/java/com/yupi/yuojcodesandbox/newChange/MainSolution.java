@@ -1,9 +1,6 @@
 package com.yupi.yuojcodesandbox.newChange;
 
 // 默认引入一般常用的包
-
-import org.apache.commons.lang3.StringUtils;
-
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -40,14 +37,28 @@ import java.util.regex.Pattern;
  * "15:123456789" - 15 代表long
  * "16:12345" - 16 代表short
  * "17:127" - 17 代表byte
+ * "18:[aa,bbb]" 18 代表 String[]
  */
 public class MainSolution {
 
 
     public static void main(String[] args) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, IOException {
-        String code = getStringCode(new File("Solution.java"));
-//        String code = "import java.util.*; \n class Solution {\n    public int lengthOfLongestSubstring(String s) {\n        if (s.length()==0) return 0;\n        HashMap<Character, Integer> map = new HashMap<Character, Integer>();\n        int max = 0;\n        int left = 0;\n        for(int i = 0; i < s.length(); i ++){\n            if(map.containsKey(s.charAt(i))){\n                left = Math.max(left,map.get(s.charAt(i)) + 1);\n            }\n            map.put(s.charAt(i),i);\n            max = Math.max(max,i-left+1);\n        }\n        return max;\n        \n    }\n}";
-//        args = new String[]{"lengthOfLongestSubstring", "2:bbbbb"};
+//        String code = getStringCode(new File("Solution.java"));
+        String code = "import java.util.*; \n class Solution {\n" +
+                "    public List<List<String>> groupAnagrams(String[] strs) {\n" +
+                "        Map<String, List<String>> map = new HashMap<String, List<String>>();\n" +
+                "        for (String str : strs) {\n" +
+                "            char[] array = str.toCharArray();\n" +
+                "            Arrays.sort(array);\n" +
+                "            String key = new String(array);\n" +
+                "            List<String> list = map.getOrDefault(key, new ArrayList<String>());\n" +
+                "            list.add(str);\n" +
+                "            map.put(key, list);\n" +
+                "        }\n" +
+                "        return new ArrayList<List<String>>(map.values());\n" +
+                "    }\n" +
+                "}\n";
+        args = new String[]{"groupAnagrams", "18:[eat,tea,tan,ate,nat,bat]"};
         (new MainSolution()).invokeMethod(code, args);
     }
 
@@ -130,6 +141,7 @@ public class MainSolution {
      * "15:123456789" - 15 代表long
      * "16:12345" - 16 代表short
      * "17:127" - 17 代表byte
+     * "18:['12','13']" 18 代表 String[]
      *
      * @param args arg 字符串参数
      * @return 转化后的对象
@@ -144,7 +156,7 @@ public class MainSolution {
         String prefix = parts[0];
         String content = parts[1];
 
-        if (StringUtils.isAllBlank(prefix, content)) {
+        if ("".equals(prefix) || "".equals(content)) {
             throw new IllegalArgumentException("Argument should not be null");
         }
 
@@ -198,8 +210,7 @@ public class MainSolution {
             case "17": // byte
                 return Byte.parseByte(content);
             case "18": // String[]
-                // ['a','b','c','d']
-                return content.replace("'", "\"").split(",");
+                return content.substring(1, content.length() - 1).split(",");
             default:
                 throw new IllegalArgumentException("Unknown prefix: " + prefix);
         }
@@ -243,6 +254,8 @@ public class MainSolution {
                 return char[].class;
             case "String":
                 return String.class;
+            case "String[]":
+                return String[].class;
             default:
                 throw new UnsupportedOperationException("no such type!");
         }

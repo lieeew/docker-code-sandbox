@@ -2,10 +2,14 @@ package com.yupi.yuojcodesandbox;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
+import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.command.StatsCmd;
 import com.github.dockerjava.api.model.Frame;
+import com.github.dockerjava.api.model.Statistics;
 import com.github.dockerjava.api.model.StreamType;
+import com.github.dockerjava.core.InvocationBuilder;
 import com.yupi.yuojcodesandbox.config.DockerClientConfig;
+import com.yupi.yuojcodesandbox.docker.JavaDockerCodeSandbox;
 import com.yupi.yuojcodesandbox.model.ExecuteMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.exception.ExceptionUtils;
@@ -13,6 +17,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.util.StopWatch;
 
 import javax.annotation.Resource;
+import java.io.Closeable;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +35,9 @@ public class Test {
 
     @Resource
     private DockerClient dockerClient;
+
+    @Resource
+    private JavaDockerCodeSandbox javaDockerCodeSandbox;
 
     @org.junit.jupiter.api.Test
     void test() {
@@ -87,4 +96,58 @@ public class Test {
         log.info("getExecuteResult result {}", executeMessage);
     }
 
+//    @org.junit.jupiter.api.Test
+//    public void test2() {
+//        ExecuteMessage executeResult = javaDockerCodeSandbox.getExecuteResult("d7c3698c50eb");
+//
+//    }
+
+    @org.junit.jupiter.api.Test
+    public void test3() {
+        StatsCmd statsCmd = dockerClient.statsCmd("8467ee5ad9a0");
+        statsCmd.exec(new ResultCallback.Adapter<Statistics>() {
+            @Override
+            public void onNext(Statistics statistics) {
+                Long memoryUsage = statistics.getMemoryStats().getUsage();
+                Long memoryLimit = statistics.getMemoryStats().getLimit();
+                System.out.println("Memory Usage: " + memoryUsage + " bytes");
+                System.out.println("Memory Limit: " + memoryLimit + " bytes");
+            }
+
+            @Override
+            public void close() throws IOException {
+
+            }
+
+            @Override
+            public void onStart(Closeable closeable) {
+
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                log.error("getRunStatistics {}", ExceptionUtils.getRootCauseMessage(throwable));
+            }
+
+            @Override
+            public void onComplete() {
+
+            }
+        }).onComplete();
+    }
+
+    @org.junit.jupiter.api.Test
+    public void test4() {
+        InvocationBuilder.AsyncResultCallback<Statistics> callback = new InvocationBuilder.AsyncResultCallback<>();
+        dockerClient.statsCmd("8467ee5ad9a0").exec(callback);
+        Statistics stats;
+        try {
+            stats = callback.awaitResult();
+            callback.close();
+        } catch (RuntimeException | IOException e) {
+            // you may want to throw an exception here
+        }
+    }
 }
+
+

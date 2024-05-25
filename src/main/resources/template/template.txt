@@ -34,6 +34,7 @@ import java.util.regex.Pattern;
  * "15:123456789" - 15 代表long
  * "16:12345" - 16 代表short
  * "17:127" - 17 代表byte
+ * "18:['12','13']" 18 代表 String[]
  */
 public class MainSolution {
 
@@ -121,6 +122,7 @@ public class MainSolution {
      * "15:123456789" - 15 代表long
      * "16:12345" - 16 代表short
      * "17:127" - 17 代表byte
+     * "18:[12,13]" 18 代表 String[]
      *
      * @param args arg 字符串参数
      * @return 转化后的对象
@@ -134,6 +136,10 @@ public class MainSolution {
 
         String prefix = parts[0];
         String content = parts[1];
+
+        if ("".equals(prefix) || "".equals(content)) {
+            throw new IllegalArgumentException("Argument should not be null");
+        }
 
         switch (prefix) {
             case "1": // int array
@@ -184,6 +190,8 @@ public class MainSolution {
                 return Short.parseShort(content);
             case "17": // byte
                 return Byte.parseByte(content);
+            case "18": // String[]
+                return content.substring(1, content.length() - 1).split(",");
             default:
                 throw new IllegalArgumentException("Unknown prefix: " + prefix);
         }
@@ -227,6 +235,8 @@ public class MainSolution {
                 return char[].class;
             case "String":
                 return String.class;
+            case "String[]":
+                return String[].class;
             default:
                 throw new UnsupportedOperationException("no such type!");
         }

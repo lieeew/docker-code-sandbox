@@ -3,7 +3,6 @@ package com.yupi.yuojcodesandbox.event.lisener;
 import com.github.dockerjava.api.DockerClient;
 import com.yupi.yuojcodesandbox.event.ContainerDeleteEvent;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 

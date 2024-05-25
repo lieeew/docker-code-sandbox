@@ -8,9 +8,9 @@ import lombok.*;
  */
 @Data
 @Builder
+@ToString
 @AllArgsConstructor
 @NoArgsConstructor
-@ToString
 public class ExecuteMessage {
     /**
      * @see ExitValue
@@ -21,7 +21,13 @@ public class ExecuteMessage {
 
     private String errorMessage;
 
+    /**
+     * 消耗时间
+     */
     private Long time;
 
+    /**
+     * 占用内存
+     */
     private Long memory;
 }
