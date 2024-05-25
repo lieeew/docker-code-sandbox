@@ -39,7 +39,7 @@ public class Solution2 {
                         "    }\n" +
                         "}";
         System.out.println("code = " + code);
-        String templateCode = FileUtil.readString(new File("E:\\yuoj-code-sandbox-master\\src\\main\\java\\com\\yupi\\yuojcodesandbox\\template\\template.text"), StandardCharsets.UTF_8);
+        String templateCode = FileUtil.readString(new File("E:\\yuoj-code-sandbox-master\\src\\main\\java\\com\\yupi\\yuojcodesandbox\\template\\template.txt"), StandardCharsets.UTF_8);
         System.out.println(String.format(templateCode, getCode(code).getMethod()));
     }
 

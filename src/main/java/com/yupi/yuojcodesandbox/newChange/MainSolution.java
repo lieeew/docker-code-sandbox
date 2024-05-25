@@ -1,10 +1,14 @@
 package com.yupi.yuojcodesandbox.newChange;
 
 // 默认引入一般常用的包
+
+import org.apache.commons.lang3.StringUtils;
+
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -39,9 +43,11 @@ import java.util.regex.Pattern;
  */
 public class MainSolution {
 
+
     public static void main(String[] args) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, IOException {
         String code = getStringCode(new File("Solution.java"));
-//        args = new String[]{"twoSum", "1:[1,2,3,4]", "10:3"};
+//        String code = "import java.util.*; \n class Solution {\n    public int lengthOfLongestSubstring(String s) {\n        if (s.length()==0) return 0;\n        HashMap<Character, Integer> map = new HashMap<Character, Integer>();\n        int max = 0;\n        int left = 0;\n        for(int i = 0; i < s.length(); i ++){\n            if(map.containsKey(s.charAt(i))){\n                left = Math.max(left,map.get(s.charAt(i)) + 1);\n            }\n            map.put(s.charAt(i),i);\n            max = Math.max(max,i-left+1);\n        }\n        return max;\n        \n    }\n}";
+//        args = new String[]{"lengthOfLongestSubstring", "2:bbbbb"};
         (new MainSolution()).invokeMethod(code, args);
     }
 
@@ -61,23 +67,21 @@ public class MainSolution {
         Class<? extends Solution> aClass = solution.getClass();
         List<String> methodTypes = getParameterTypesFromCode(args[0], code);
         int parameterNum = methodTypes.size();
-        Object result = null;
-        switch (parameterNum) {
-            case 1:
-                result = aClass.getDeclaredMethod(args[0], getClassByString(methodTypes.get(0)))
-                        .invoke(new Solution(), getMethodArgsByString(args[1]));
-                break;
-            case 2:
-                result = aClass.getDeclaredMethod(args[0], getClassByString(methodTypes.get(0)), getClassByString(methodTypes.get(1)))
-                        .invoke(new Solution(), getMethodArgsByString(args[1]), getMethodArgsByString(args[2]));
-                break;
-            case 3:
-                result = aClass.getDeclaredMethod(args[0], getClassByString(methodTypes.get(0)), getClassByString(methodTypes.get(1)), getClassByString(methodTypes.get(2)))
-                        .invoke(new Solution(), getMethodArgsByString(args[1]), getMethodArgsByString(args[2]), getMethodArgsByString(args[3]));
-                break;
+
+        // 获取方法参数类型数组
+        Class<?>[] parameterTypes = new Class<?>[parameterNum];
+        Object[] methodArgs = new Object[parameterNum];
+
+        for (int i = 0; i < parameterNum; i++) {
+            parameterTypes[i] = getClassByString(methodTypes.get(i));
+            methodArgs[i] = getMethodArgsByString(args[i + 1]);
         }
-        printResult(result);
-    }
+
+        // 获取方法并调用
+        Method method = aClass.getDeclaredMethod(args[0], parameterTypes);
+        Object result = method.invoke(solution, methodArgs);
+
+        printResult(result);   }
 
     private void printResult(Object result) {
         if (result instanceof byte[]) {
@@ -140,6 +144,10 @@ public class MainSolution {
         String prefix = parts[0];
         String content = parts[1];
 
+        if (StringUtils.isAllBlank(prefix, content)) {
+            throw new IllegalArgumentException("Argument should not be null");
+        }
+
         switch (prefix) {
             case "1": // int array
                 return Arrays.stream(content.substring(1, content.length() - 1).split(","))
@@ -189,6 +197,9 @@ public class MainSolution {
                 return Short.parseShort(content);
             case "17": // byte
                 return Byte.parseByte(content);
+            case "18": // String[]
+                // ['a','b','c','d']
+                return content.replace("'", "\"").split(",");
             default:
                 throw new IllegalArgumentException("Unknown prefix: " + prefix);
         }
@@ -230,6 +241,8 @@ public class MainSolution {
                 return boolean[].class;
             case "char[]":
                 return char[].class;
+            case "String":
+                return String.class;
             default:
                 throw new UnsupportedOperationException("no such type!");
         }

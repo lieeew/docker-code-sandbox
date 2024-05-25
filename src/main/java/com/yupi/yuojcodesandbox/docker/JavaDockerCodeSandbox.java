@@ -21,10 +21,13 @@ import javax.swing.event.DocumentEvent;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * @author <a href="https://www.github.com/lieeew">leikooo</a>
@@ -34,7 +37,7 @@ import java.util.concurrent.TimeUnit;
 public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
     public static final String IMAGE_NAME = "openjdk:8-alpine";
 
-    private static final long TIME_OUT = 5000L;
+    private static final long TIME_OUT = 10L;
 
     @Resource
     private ApplicationEventPublisher applicationEventPublisher;
@@ -74,12 +77,10 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
         // 执行命令并获取结果
         List<ExecuteMessage> executeMessageList = new ArrayList<>();
         // todo 修改 参考 Solution 文档
-        String inputArgsArray = "\"" + String.join("\" \"", inputList) + "\"";
-//        String[] javacSolution = ArrayUtil.append(new String[]{"javac", "-encoding", "utf-8", "/app/Solution.java"});
-//        String[] javacRunMain = ArrayUtil.append(new String[]{"javac", "-encoding", "utf-8", "/app/MainSolution.java"});
-        // "java", "-Dfile.encoding=UTF-8", "-cp", "/app", "Solution", "twoSum" , "1:[1,2,3,4]" ,"10:3"]
+        String inputArgsArray = "'" + String.join("' '", inputList) + "'";
         // 合并命令为一个单一的命令字符串
         String combinedCommand = String.join(" && ",
+                "cd /app ",
                 "javac -encoding utf-8 /app/Solution.java",
                 "javac -encoding utf-8 /app/MainSolution.java",
                 "java -Dfile.encoding=UTF-8 -cp /app MainSolution " + inputArgsArray
@@ -94,7 +95,7 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
                 .exec();
         log.info("创建执行命令: {}", execCreateCmdResponse);
         ExecuteMessage executeResult = getExecuteResult(containerId, execCreateCmdResponse);
-        log.info("执行结果: {}", executeResult);
+        log.info("ExecuteMessageResult: {}", executeResult);
         executeMessageList.add(executeResult);
         applicationEventPublisher.publishEvent(new ContainerDeleteEvent(this, containerId));
         return executeMessageList;
@@ -127,8 +128,10 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
 
     private ExecuteMessage getExecuteResult(String containerId, ExecCreateCmdResponse execCreateCmdResponse) {
         StopWatch stopWatch = new StopWatch();
-        final String[] message = {null};
-        final String[] errorMessage = {null};
+        final String[] message = new String[30];
+        final String[] errorMessage = new String[30];
+        final int[] messageIndex = {0};
+        final int[] errorMessageIndex = {0};
         long time = 0L;
         // 判断是否超时
         final boolean[] isTimeOut = {true};
@@ -137,44 +140,48 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
         final long[] maxMemory = {0L};
 
         // 获取占用的内存
-        StatsCmd statsCmd = getRunStatistics(containerId, maxMemory);
-        try {
+        try (StatsCmd statsCmd = getRunStatistics(containerId, maxMemory)) {
             stopWatch.start();
-            dockerClient.execStartCmd(execId)
+            dockerClient.logContainerCmd(execId)
+                    .withStdOut(true)
+                    .withStdErr(true)
+                    .withFollowStream(true)
+                    .withTail(30)
                     .exec(new ResultCallback.Adapter<Frame>() {
                         @Override
                         public void onComplete() {
                             // 如果执行完成，则表示没超时
+                            log.info("getExecuteResult#onComplete be invoke");
                             isTimeOut[0] = false;
                             super.onComplete();
                         }
 
                         @Override
                         public void onNext(Frame frame) {
+                            log.info("getExecuteResult#onNext be invoke");
                             StreamType streamType = frame.getStreamType();
                             if (StreamType.STDERR.equals(streamType)) {
-                                errorMessage[0] = new String(frame.getPayload());
+                                errorMessage[errorMessageIndex[0]++] = new String(frame.getPayload(), StandardCharsets.UTF_8);
                                 log.error("输出错误结果: {}", errorMessage[0]);
                             } else {
-                                message[0] = new String(frame.getPayload());
-                                log.error("输出结果: {}", message[0]);
+                                message[messageIndex[0]++] = new String(frame.getPayload(), StandardCharsets.UTF_8);
+                                log.info("输出结果: {}", message[0]);
                             }
                             super.onNext(frame);
                         }
                     })
-                    .awaitCompletion(TIME_OUT, TimeUnit.MICROSECONDS);
+                    .awaitCompletion(TIME_OUT, TimeUnit.SECONDS);
             stopWatch.stop();
             time = stopWatch.getLastTaskTimeMillis();
-            statsCmd.close();
         } catch (InterruptedException e) {
             log.error("程序执行异常: {}", ExceptionUtils.getStackTrace(e));
         }
-        ExecuteMessage executeMessage = new ExecuteMessage();
-        executeMessage.setMessage(message[0]);
-        executeMessage.setErrorMessage(errorMessage[0]);
-        executeMessage.setTime(time);
-        executeMessage.setMemory(maxMemory[0]);
-        return executeMessage;
+        return ExecuteMessage.builder()
+                .errorMessage(Arrays.stream(errorMessage).filter(Objects::nonNull).collect(Collectors.joining(" ")))
+                .memory(maxMemory[0])
+                .message(Arrays.stream(message).filter(Objects::nonNull).collect(Collectors.joining(" ")))
+                .time(time)
+                .build();
     }
 
     private StatsCmd getRunStatistics(String containerId, long[] maxMemory) {

@@ -50,8 +50,8 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
 
         // 3. 执行代码，得到输出结果
         List<ExecuteMessage> executeMessageList = runFile(userCodeFile, inputList);
-        log.info("ExecuteMessage {}", executeMessageList.get(0));
-//        4. 收集整理输出结果
+
+        //        4. 收集整理输出结果
         ExecuteCodeResponse outputResponse = getOutputResponse(executeMessageList);
 
 //        5. 文件清理
@@ -77,7 +77,7 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
         // 保存用户代码
         String userCodeParentPath = globalCodePathName + File.separator + UUID.randomUUID();
         // 保存运行模板
-        saveRunTemplateCode(code, userCodeParentPath);
+        saveRunTemplateCode(userCodeParentPath);
         saveUserCode(code, userCodeParentPath);
         return new File(userCodeParentPath);
     }
@@ -87,9 +87,9 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
         FileUtil.writeString(code, userCodePath, StandardCharsets.UTF_8);
     }
 
-    private void saveRunTemplateCode(String code, String userCodeParentPath) {
+    private void saveRunTemplateCode(String userCodeParentPath) {
         try {
-            InputStream inputStream = ClassLoaderUtil.getClassLoader().getResourceAsStream("template" + File.separator + "template.text");
+            InputStream inputStream = ClassLoaderUtil.getClassLoader().getResourceAsStream("template" + File.separator + "template.txt");
             String templateCode = IOUtils.toString(new BufferedInputStream(Objects.requireNonNull(inputStream)), StandardCharsets.UTF_8);
             String userCodePath = userCodeParentPath + File.separator + RUN_JAVA_CLASS_NAME;
             FileUtil.writeString(templateCode, userCodePath, StandardCharsets.UTF_8);
@@ -162,7 +162,7 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
                 executeCodeResponse.setStatus(3);
                 break;
             }
-            outputList.add(executeMessage.getMessage());
+            outputList.add(executeMessage.getMessage().replace("\n", ""));
             Long time = executeMessage.getTime();
             if (time != null) {
                 maxTime = Math.max(maxTime, time);

@@ -1,13 +1,15 @@
 package com.yupi.yuojcodesandbox.model;
 
-import lombok.Data;
-import lombok.ToString;
+import lombok.*;
 
 /**
  * 进程执行信息
  * @author <a href="https://www.github.com/lieeew">leikooo</a>
  */
 @Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
 @ToString
 public class ExecuteMessage {
     /**
