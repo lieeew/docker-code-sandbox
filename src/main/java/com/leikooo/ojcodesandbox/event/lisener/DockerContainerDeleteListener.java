@@ -22,7 +22,7 @@ public class DockerContainerDeleteListener {
     @EventListener(classes = ContainerDeleteEvent.class)
     public void deleteContainer(ContainerDeleteEvent containerDeleteEvent) {
         String containerId = containerDeleteEvent.getContainerId();
-        log.error("DockerContainerDeleteListener#deleteContainer container delete id = {}", containerId);
+        log.warn("DockerContainerDeleteListener#deleteContainer container delete id = {}", containerId);
         dockerClient.removeContainerCmd(containerId).withForce(true).exec();
     }
 }

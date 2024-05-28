@@ -3,6 +3,7 @@ package com.leikooo.ojcodesandbox.docker;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.ClassLoaderUtil;
 import cn.hutool.core.util.StrUtil;
+import com.leikooo.ojcodesandbox.event.FileDeleteEvent;
 import com.leikooo.ojcodesandbox.model.ExecuteCodeRequest;
 import com.leikooo.ojcodesandbox.model.ExecuteCodeResponse;
 import com.leikooo.ojcodesandbox.model.ExecuteMessage;
@@ -10,13 +11,18 @@ import com.leikooo.ojcodesandbox.model.JudgeInfo;
 import com.leikooo.ojcodesandbox.utils.ProcessUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
+import org.springframework.context.ApplicationEventPublisher;
 
+import javax.annotation.Resource;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Java 代码沙箱模板方法的实现
@@ -32,6 +38,9 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
 
     private static final long TIME_OUT = 5000L;
 
+    @Resource
+    private ApplicationEventPublisher applicationEventPublisher;
+
     @Override
     public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
         List<String> inputList = executeCodeRequest.getInputList();
@@ -39,10 +48,10 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
         // todo 添加其他语言支持
         String language = executeCodeRequest.getLanguage();
 
-//        1. 把用户的代码保存为文件
+        // 1. 把用户的代码保存为文件
         File userCodeFile = saveCodeToFile(code);
 
-//       2. 编译代码，得到 class 文件
+        // 2. 编译代码，得到 class 文件
         compileFile(userCodeFile);
 
         // 3. 执行代码，得到输出结果
@@ -51,11 +60,9 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
         //4. 收集整理输出结果
         ExecuteCodeResponse outputResponse = getOutputResponse(executeMessageList);
 
-//        5. 文件清理
-//        if (!deleteFile(userCodeFile)) {
-//            log.error("deleteFile error, userCodeFilePath = {}", userCodeFile.getAbsolutePath());
-//        }
-        return outputResponse;
+        // 5. 文件清理
+        applicationEventPublisher.publishEvent(new FileDeleteEvent(this, userCodeFile));
+        return null;
     }
 
 
@@ -165,9 +172,9 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
             }
         }
         // 正常运行完成
-//        if (outputList.size() == executeMessageList.size()) {
-//            executeCodeResponse.setStatus(1);
-//        }
+        if (outputList.size() == executeMessageList.size()) {
+            executeCodeResponse.setStatus(1);
+        }
         JudgeInfo judgeInfo = new JudgeInfo();
         judgeInfo.setTime(maxTime);
         judgeInfo.setMemory(executeMessageList.get(0).getMemory());

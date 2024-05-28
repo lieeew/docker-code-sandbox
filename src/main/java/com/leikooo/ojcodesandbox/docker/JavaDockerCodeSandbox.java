@@ -35,6 +35,8 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
 
     private static final long TIME_OUT = 10L;
 
+    private static final long COMPILE_TIME_OUT = 5L;
+
     @Resource
     private ApplicationEventPublisher applicationEventPublisher;
 
@@ -72,27 +74,66 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
         dockerClient.startContainerCmd(containerId).exec();
         // 执行命令并获取结果
         // docker exec ....
-        List<ExecuteMessage> executeMessageList = new ArrayList<>();
-        String inputArgsArray = "'" + String.join("' '", inputList) + "'";
-        // 合并命令为一个单一的命令字符串
+        try {
+            compileCode(containerId);
+            return runCompiledCode(containerId, inputList);
+        } catch (Exception e) {
+            log.error("runFile error {}", ExceptionUtils.getStackTrace(e));
+            throw new RuntimeException(e);
+        } finally {
+            applicationEventPublisher.publishEvent(new ContainerDeleteEvent(this, containerId));
+        }
+    }
+
+    private List<ExecuteMessage> runCompiledCode(String containerId, List<String> inputList) {
+        return inputList.stream().map(input -> {
+            // "groupAnagrams 18:[eat,tea,tan,ate,nat,bat]"
+            String[] argList = input.split(" ");
+            String inputArgsArray = "'" + String.join("' '", argList) + "'";
+            // 合并命令为一个单一的命令字符串
+            String combinedCommand = String.join("&&",
+                    " cd /app ",
+                    " java -Dfile.encoding=UTF-8 -cp . MainSolution " + inputArgsArray
+            );
+            String[] commands = {"sh", "-c", combinedCommand};
+            log.info("commands: {}", String.join(" ", commands));
+            ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
+                    .withCmd(commands)
+                    .withAttachStderr(true)
+                    .withAttachStdin(true)
+                    .withAttachStdout(true)
+                    .exec();
+            ExecuteMessage executeResult = getExecuteResult(execCreateCmdResponse.getId(), containerId);
+            log.info("ExecuteMessageResult: {}", executeResult);
+            return executeResult;
+        }).collect(Collectors.toList());
+    }
+
+    private void compileCode(String containerId) {
         String combinedCommand = String.join("&&",
                 " cd /app ",
                 " javac -encoding utf-8 Solution.java ",
-                " javac -encoding utf-8 MainSolution.java ",
-                " java -Dfile.encoding=UTF-8 -cp . MainSolution " + inputArgsArray
+                " javac -encoding utf-8 MainSolution.java "
         );
         String[] commands = {"sh", "-c", combinedCommand};
-        log.info("commands: {}", String.join(" ", commands));
         ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
                 .withCmd(commands)
                 .withAttachStderr(true)
                 .withAttachStdin(true)
                 .withAttachStdout(true)
                 .exec();
-        ExecuteMessage executeResult = getExecuteResult(execCreateCmdResponse.getId(), containerId);
-        log.info("ExecuteMessageResult: {}", executeResult);
-        executeMessageList.add(executeResult);
-        return executeMessageList;
+        try {
+            dockerClient.execStartCmd(execCreateCmdResponse.getId())
+                    .exec(new ResultCallback.Adapter<Frame>() {
+                        @Override
+                        public void onComplete() {
+                            log.info("CompileCode already !");
+                            super.onComplete();
+                        }
+                    }).awaitCompletion(COMPILE_TIME_OUT, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            log.error("compileCode error {}", ExceptionUtils.getStackTrace(e));
+        }
     }
 
     private CreateContainerResponse createContainerAndGetResponse(File userCodeFile) {
@@ -168,9 +209,6 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
             getRunStatistics(containerId, maxMemory);
         } catch (InterruptedException e) {
             log.error("程序执行异常: {}", ExceptionUtils.getStackTrace(e));
-        } finally {
-            // 不管有没有报错一定要删除镜像文件
-            applicationEventPublisher.publishEvent(new ContainerDeleteEvent(this, containerId));
         }
         return ExecuteMessage.builder()
                 .errorMessage(Arrays.stream(errorMessage).filter(Objects::nonNull).collect(Collectors.joining(" ")))

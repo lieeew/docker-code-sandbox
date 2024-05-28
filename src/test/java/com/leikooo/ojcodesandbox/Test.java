@@ -12,12 +12,15 @@ import com.leikooo.ojcodesandbox.model.ExecuteMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.util.StopWatch;
 
 import javax.annotation.Resource;
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -145,6 +148,43 @@ public class Test {
         } catch (RuntimeException | IOException e) {
             // you may want to throw an exception here
         }
+    }
+
+    @org.junit.jupiter.api.Test
+    public void test5() {
+        String input = "groupAnagrams 18:[eat,tea,tan,ate,nat,bat]";
+        // "groupAnagrams 18:[eat,tea,tan,ate,nat,bat]"
+        String[] argList = input.split(" ");
+        String inputArgsArray = "'" + String.join("' '", argList) + "'";
+        // 合并命令为一个单一的命令字符串
+        String combinedCommand = String.join("&&",
+                " cd /app ",
+                " java -Dfile.encoding=UTF-8 -cp . MainSolution " + inputArgsArray
+        );
+        String[] commands = {"sh", "-c", combinedCommand};
+        log.info("commands: {}", String.join(" ", commands));
+
+    }
+
+    @org.junit.jupiter.api.Test
+    public void test6() {
+        File files = new File("E:\\yuoj-code-sandbox-master\\src\\main\\resources\\testCode");
+        // 删除下级内容
+        try {
+            Files.walk(files.toPath()) // Traverse the file tree in depth-first order
+                    .sorted(Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try {
+                            System.out.println("Deleting: " + path);
+                            Files.delete(path);  //delete each file or directory
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
     }
 }
 
