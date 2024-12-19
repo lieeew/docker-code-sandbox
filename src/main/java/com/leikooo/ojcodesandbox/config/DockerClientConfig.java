@@ -24,34 +24,34 @@ import java.time.Duration;
 public class DockerClientConfig {
     @Value("${docker.host}")
     private String dockerHost;
+//
+//    @Value("${docker.registry.username}")
+//    private String userName;
+//
+//    @Value("${docker.registry.email}")
+//    private String email;
+//
+//    @Value("${docker.registry.password}")
+//    private String password;
+//
+//    @Value("${docker.tls_verify}")
+//    private boolean tlsVerify;
 
-    @Value("${docker.registry.username}")
-    private String userName;
-
-    @Value("${docker.registry.email}")
-    private String email;
-
-    @Value("${docker.registry.password}")
-    private String password;
-
-    @Value("${docker.tls_verify}")
-    private boolean tlsVerify;
-
-    private final File file = ResourceExtractor.extractResourceDirectory("ca");
+    // private final File file = ResourceExtractor.extractResourceDirectory("ca");
 
     @Bean
     public DockerClient dockerClient() {
         com.github.dockerjava.core.DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
                 .withDockerHost(dockerHost)
-                .withDockerTlsVerify(tlsVerify)
-                .withRegistryPassword(password)
-                .withRegistryUsername(userName)
-                .withRegistryEmail(email)
-                .withDockerCertPath(file.getPath())
+                // .withDockerTlsVerify(tlsVerify)
+//                .withRegistryPassword(password)
+//                .withRegistryUsername(userName)
+//                .withRegistryEmail(email)
+//                .withDockerCertPath(file.getPath())
                 .build();
         DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
                 .dockerHost(config.getDockerHost())
-                .sslConfig(config.getSSLConfig())
+                // .sslConfig(config.getSSLConfig())
                 .maxConnections(100)
                 .connectionTimeout(Duration.ofSeconds(30))
                 .responseTimeout(Duration.ofSeconds(45))
@@ -64,6 +64,6 @@ public class DockerClientConfig {
      */
     @PreDestroy
     public void delCaFolder() {
-        FileUtil.del(file);
+        // FileUtil.del(file);
     }
 }

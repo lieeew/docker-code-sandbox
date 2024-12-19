@@ -2,7 +2,7 @@ server:
   port: 8080
 spring:
   profiles:
-    active: dev
+    active: prod
 docker:
   host: ${docker.host}
   tls_verify: ${docker.tls_verify}

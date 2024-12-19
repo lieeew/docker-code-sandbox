@@ -32,7 +32,7 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
 
     private static final String GLOBAL_CODE_DIR_NAME = "tempCode";
 
-    private static final String GLOBAL_JAVA_CLASS_NAME = "Solution.java";
+    private static final String GLOBAL_JAVA_CLASS_NAME = "Main.java";
 
     private static final String RUN_JAVA_CLASS_NAME = "MainSolution.java";
 
@@ -62,7 +62,7 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
 
         // 5. 文件清理
         applicationEventPublisher.publishEvent(new FileDeleteEvent(this, userCodeFile));
-        return null;
+        return outputResponse;
     }
 
 
@@ -79,9 +79,9 @@ public abstract class JavaCodeSandboxTemplate implements CodeSandbox {
             FileUtil.mkdir(globalCodePathName);
         }
         // 保存用户代码
-        String userCodeParentPath = globalCodePathName + File.separator + UUID.randomUUID();
+        String userCodeParentPath = globalCodePathName + File.separator + UUID.randomUUID() + File.separator + "app";
         // 保存运行模板
-        saveRunTemplateCode(userCodeParentPath);
+        // saveRunTemplateCode(userCodeParentPath);
         saveUserCode(code, userCodeParentPath);
         return new File(userCodeParentPath);
     }

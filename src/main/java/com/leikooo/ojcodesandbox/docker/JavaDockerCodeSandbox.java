@@ -18,10 +18,7 @@ import javax.annotation.Resource;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -68,10 +65,8 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
      */
     @Override
     public List<ExecuteMessage> runFile(File userCodeFile, List<String> inputList) {
-        CreateContainerResponse createContainerResponse = createContainerAndGetResponse(userCodeFile);
-        String containerId = createContainerResponse.getId();
-        // 启动容器
-        dockerClient.startContainerCmd(containerId).exec();
+        String containerId = createContainerAndGetResponse();
+        copyFileToContainer(containerId, userCodeFile);
         // 执行命令并获取结果
         // docker exec ....
         try {
@@ -81,39 +76,31 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
             log.error("runFile error {}", ExceptionUtils.getStackTrace(e));
             throw new RuntimeException(e);
         } finally {
-            applicationEventPublisher.publishEvent(new ContainerDeleteEvent(this, containerId));
+             applicationEventPublisher.publishEvent(new ContainerDeleteEvent(this, containerId));
         }
     }
 
     private List<ExecuteMessage> runCompiledCode(String containerId, List<String> inputList) {
-        return inputList.stream().map(input -> {
-            // "groupAnagrams 18:[eat,tea,tan,ate,nat,bat]"
-            String[] argList = input.split(" ");
-            String inputArgsArray = "'" + String.join("' '", argList) + "'";
-            // 合并命令为一个单一的命令字符串
-            String combinedCommand = String.join("&&",
-                    " cd /app ",
-                    " java -Dfile.encoding=UTF-8 -cp . MainSolution " + inputArgsArray
-            );
-            String[] commands = {"sh", "-c", combinedCommand};
-            log.info("commands: {}", String.join(" ", commands));
-            ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
-                    .withCmd(commands)
-                    .withAttachStderr(true)
-                    .withAttachStdin(true)
-                    .withAttachStdout(true)
-                    .exec();
-            ExecuteMessage executeResult = getExecuteResult(execCreateCmdResponse.getId(), containerId);
-            log.info("ExecuteMessageResult: {}", executeResult);
-            return executeResult;
-        }).collect(Collectors.toList());
+        String command = String.join(" && ",
+                "cd /root/app",
+                " java -Dfile.encoding=UTF-8 -cp . Main " + inputList
+        );
+        String[] commands = {"sh", "-c", command};
+        ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
+                .withCmd(commands)
+                .withAttachStderr(true)
+                .withAttachStdin(true)
+                .withAttachStdout(true)
+                .exec();
+        ExecuteMessage executeResult = getExecuteResult(execCreateCmdResponse.getId(), containerId);
+        log.error("ExecuteMessageResult: {}", executeResult);
+        return Collections.singletonList(executeResult);
     }
 
     private void compileCode(String containerId) {
-        String combinedCommand = String.join("&&",
-                " cd /app ",
-                " javac -encoding utf-8 Solution.java ",
-                " javac -encoding utf-8 MainSolution.java "
+        String combinedCommand = String.join(" && ",
+                " cd /root/app",
+                " javac -encoding utf-8 Main.java "
         );
         String[] commands = {"sh", "-c", combinedCommand};
         ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
@@ -136,24 +123,31 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
         }
     }
 
-    private CreateContainerResponse createContainerAndGetResponse(File userCodeFile) {
+    private void copyFileToContainer(String containerId, File userCodeFile) {
         log.info("userCodeFile = {}", userCodeFile);
+        dockerClient.copyArchiveToContainerCmd(containerId)
+                .withRemotePath("/root").withHostResource(userCodeFile.getAbsolutePath()).exec();
+    }
+
+    private String createContainerAndGetResponse() {
         // 创建容器
         CreateContainerCmd containerCmd = dockerClient.createContainerCmd(IMAGE_NAME);
         HostConfig hostConfig = new HostConfig();
         hostConfig.withMemory(100 * 1000 * 1000L);
         hostConfig.withMemorySwap(0L);
         hostConfig.withCpuCount(1L);
-//        hostConfig.withSecurityOpts(Arrays.asList("seccomp=leikoooDockerClient"));
-        hostConfig.setBinds(new Bind(userCodeFile.getPath(), new Volume("/app")));
-        return containerCmd
+        // hostConfig.withSecurityOpts(Arrays.asList("seccomp=leikoooDockerClient"));
+        // hostConfig.setBinds(new Bind(userCodeFile.getPath(), new Volume("/app")));
+        String containerId = containerCmd
                 .withHostConfig(hostConfig)
                 .withNetworkDisabled(true)
                 .withAttachStdin(true)
                 .withAttachStderr(true)
                 .withAttachStdout(true)
                 .withTty(true)
-                .exec();
+                .exec().getId();
+        dockerClient.startContainerCmd(containerId).exec();
+        return containerId;
     }
 
     @Override
@@ -166,12 +160,8 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
         StopWatch stopWatch = new StopWatch();
         final String[] message = new String[30];
         final String[] errorMessage = new String[30];
-        // index 索引
-        final int[] messageIndex = {0};
-        final int[] errorMessageIndex = {0};
-        long time = 0L;
-        // 判断是否超时
-        final boolean[] isTimeOut = {true};
+        final boolean[] timeout = {true};
+        long time = 0;
         // 获取占用的内存
         final long[] maxMemory = {0L};
 
@@ -182,28 +172,30 @@ public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
                         @Override
                         public void onComplete() {
                             // 如果执行完成，则表示没超时
-                            log.info("getExecuteResult#onComplete be invoke");
-                            isTimeOut[0] = false;
+                            timeout[0] = false;
                             super.onComplete();
                         }
 
                         @Override
                         public void onNext(Frame frame) {
-                            if (messageIndex[0] > 30 || errorMessageIndex[0] > 30) {
-                                // 超过了直接调用 onComplete
-                                super.onComplete();
-                            }
-                            log.info("getExecuteResult#onNext be invoke");
+                            log.info("getExecuteResult#onNext method");
                             StreamType streamType = frame.getStreamType();
                             if (StreamType.STDERR.equals(streamType)) {
-                                errorMessage[errorMessageIndex[0]++] = new String(frame.getPayload(), StandardCharsets.UTF_8);
+                                errorMessage[0] = new String(frame.getPayload());
+                                System.out.println("输出错误结果：" + errorMessage[0]);
                             } else {
-                                message[messageIndex[0]++] = new String(frame.getPayload(), StandardCharsets.UTF_8);
+                                message[0] = new String(frame.getPayload());
+                                System.out.println("输出结果：" + message[0]);
                             }
                             super.onNext(frame);
                         }
+
+                        @Override
+                        public void onError(Throwable throwable) {
+                            log.error(ExceptionUtils.getRootCauseMessage(throwable));
+                        }
                     })
-                    .awaitCompletion(TIME_OUT, TimeUnit.SECONDS);
+                    .awaitCompletion(TIME_OUT, TimeUnit.MINUTES);
             stopWatch.stop();
             time = stopWatch.getLastTaskTimeMillis();
             getRunStatistics(containerId, maxMemory);
